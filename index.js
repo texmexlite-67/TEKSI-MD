@@ -29,6 +29,8 @@ const spamTracker = new Map();
 const statusNotified = new Map();
 let groupListCache = { at: 0, groups: [] };
 let pairingTimer = null;
+let pairingToken = 0;
+let activeSock = null;
 let qrNoticeShown = false;
 
 const CROCKFORD_CHARACTERS = '123456789ABCDEFGHJKLMNPQRSTVWXYZ';
@@ -83,6 +85,7 @@ async function requestPairingCode(sock) {
 }
 
 function stopPairingTimer() {
+  pairingToken++; // invalidate any in-flight pairing refresh
   if (pairingTimer) {
     clearTimeout(pairingTimer);
     pairingTimer = null;
@@ -125,6 +128,12 @@ async function startBot() {
   banner();
   stopPairingTimer();
 
+  // Never leave two sockets sharing the same session — WhatsApp logs them out.
+  if (activeSock) {
+    try { activeSock.end(); } catch {}
+    activeSock = null;
+  }
+
   if (!fs.existsSync(config.sessionFolder)) {
     fs.mkdirSync(config.sessionFolder, { recursive: true });
   }
@@ -146,6 +155,7 @@ async function startBot() {
     qrTimeout: config.qrTimeoutMs,
   });
 
+  activeSock = sock;
   sock.ev.on('creds.update', saveCreds);
 
   // ---------- Connection ----------
@@ -206,15 +216,19 @@ async function startBot() {
       console.log('[TEKSI-MD] TEKSI_FORCE_PAIR=1 — requesting a fresh pairing code anyway.');
     }
     const refreshPairingCode = async () => {
+      const token = pairingToken;
       try {
         await requestPairingCode(sock);
       } catch (e) {
         console.error('[TEKSI-MD] Pairing code error:', e.message);
       }
-      stopPairingTimer();
+      if (token !== pairingToken) return; // socket closed / reconnected meanwhile
       pairingTimer = setTimeout(refreshPairingCode, config.qrTimeoutMs);
     };
-    setTimeout(refreshPairingCode, 3000);
+    const initialToken = pairingToken;
+    setTimeout(() => {
+      if (initialToken === pairingToken) refreshPairingCode();
+    }, 3000);
   } else {
     console.log('[TEKSI-MD] Session looks registered — waiting for connection.');
     console.log('[TEKSI-MD] If it never connects: rm -rf session, then restart.');
