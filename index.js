@@ -218,20 +218,19 @@ async function startBot() {
     if (forcePair) {
       console.log('[TEKSI-MD] TEKSI_FORCE_PAIR=1 — requesting a fresh pairing code anyway.');
     }
-    const refreshPairingCode = async () => {
-      const token = pairingToken;
+    // Show ONE code and leave it alone. Auto-refreshing used to replace the
+    // code while the user was still navigating WhatsApp, so every code they
+    // typed was already stale. Restart the bot if you need a new one.
+    const requestToken = pairingToken;
+    setTimeout(async () => {
+      if (requestToken !== pairingToken) return;
       try {
         await requestPairingCode(sock);
       } catch (e) {
         console.error('[TEKSI-MD] Pairing code error:', e.message);
       }
-      if (token !== pairingToken) return; // socket closed / reconnected meanwhile
-      pairingTimer = setTimeout(refreshPairingCode, config.qrTimeoutMs);
-    };
-    const initialToken = pairingToken;
-    setTimeout(() => {
-      if (initialToken === pairingToken) refreshPairingCode();
     }, 3000);
+    console.log('[TEKSI-MD] Code stays live until used. Restart the bot for a new one.');
   } else {
     console.log('[TEKSI-MD] Session looks registered — waiting for connection.');
     console.log('[TEKSI-MD] If it never connects: rm -rf session, then restart.');
