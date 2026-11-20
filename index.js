@@ -147,7 +147,8 @@ async function startBot() {
     browser: Browsers.windows(config.botName),
     markOnlineOnConnect: true,
     syncFullHistory: false,
-    qrTimeout: config.qrTimeoutMs,
+    // No qrTimeout here: it is a QR-lifetime setting and kills the socket
+    // mid-pairing, invalidating the pairing code the user is typing.
   });
 
   activeSock = sock;
