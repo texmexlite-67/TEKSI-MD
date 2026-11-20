@@ -37,6 +37,11 @@ module.exports = {
     return Number.isFinite(value) && value > 0 ? value : 120000;
   })(),
 
+  // QR display is OFF by default — we use the 8-digit pairing code instead.
+  // Enable temporarily with TEKSI_SHOW_QR=1 if you really need a QR.
+  showQr: (process.env.TEKSI_SHOW_QR || '').toLowerCase() === '1' ||
+          (process.env.TEKSI_SHOW_QR || '').toLowerCase() === 'true',
+
   // ---------- Downloads ----------
   // Max file size the bot will try to send (in MB).
   downloadMaxMB: 4096, // 4 GB — large files stream to disk instead of memory

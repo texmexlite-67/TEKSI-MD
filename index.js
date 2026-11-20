@@ -13,6 +13,7 @@ const {
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const config = require('./config');
 const settings = require('./lib/settings');
@@ -27,6 +28,39 @@ const ALLOWED_LINK_RE = /(chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)/i;
 const spamTracker = new Map();
 const statusNotified = new Map();
 let groupListCache = { at: 0, groups: [] };
+let pairingTimer = null;
+let qrNoticeShown = false;
+
+function eightDigitCode() {
+  let code = '';
+  for (let i = 0; i < 8; i++) code += crypto.randomInt(0, 10);
+  return code;
+}
+
+function printPairingCode(code) {
+  const seconds = Math.round(config.qrTimeoutMs / 1000);
+  console.log('\n' + '='.repeat(50));
+  console.log(`  PAIRING CODE:  ${code}`);
+  console.log('  WhatsApp > Linked Devices > Link with phone number');
+  console.log(`  Expires in ${seconds}s — a fresh code appears automatically.`);
+  console.log('='.repeat(50) + '\n');
+}
+
+async function requestPairingCode(sock) {
+  const phone = String(config.pairingNumber || '').replace(/[^0-9]/g, '');
+  if (!phone) throw new Error('pairingNumber is empty — set it in config.js');
+  const code = eightDigitCode();
+  console.log(`[TEKSI-MD] Requesting 8-digit pairing code for +${phone} ...`);
+  const accepted = await sock.requestPairingCode(phone, code);
+  printPairingCode(accepted || code);
+}
+
+function stopPairingTimer() {
+  if (pairingTimer) {
+    clearTimeout(pairingTimer);
+    pairingTimer = null;
+  }
+}
 
 function banner() {
   console.log('\n' + '='.repeat(50));
@@ -61,6 +95,7 @@ async function participatingGroups(sock) {
 
 async function startBot() {
   banner();
+  stopPairingTimer();
 
   if (!fs.existsSync(config.sessionFolder)) {
     fs.mkdirSync(config.sessionFolder, { recursive: true });
@@ -90,11 +125,17 @@ async function startBot() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('[TEKSI-MD] Scan this QR with WhatsApp (Linked Devices):\n');
-      qrcode.generate(qr, { small: true });
+      if (config.showQr) {
+        console.log('[TEKSI-MD] Scan this QR with WhatsApp (Linked Devices):\n');
+        qrcode.generate(qr, { small: true });
+      } else if (!qrNoticeShown) {
+        qrNoticeShown = true;
+        console.log('[TEKSI-MD] QR display is disabled. Use the 8-digit pairing code below.');
+      }
     }
 
     if (connection === 'open') {
+      stopPairingTimer();
       console.log(`\n[TEKSI-MD] ✅ Connected as ${sock.user?.id || config.pairingNumber}`);
       console.log(`[TEKSI-MD] Bot is ONLINE — send "${config.prefix}menu" in WhatsApp.\n`);
 
@@ -111,6 +152,7 @@ async function startBot() {
     }
 
     if (connection === 'close') {
+      stopPairingTimer();
       const code = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
       console.log(`[TEKSI-MD] Connection closed (${code}). Reconnecting: ${shouldReconnect}`);
@@ -122,23 +164,18 @@ async function startBot() {
     }
   });
 
-  // Request pairing code if not registered
+  // 8-digit pairing code only — QR is optional and off by default.
   if (!sock.authState.creds.registered) {
-    setTimeout(async () => {
+    const refreshPairingCode = async () => {
       try {
-        const phone = config.pairingNumber.replace(/[^0-9]/g, '');
-        console.log(`[TEKSI-MD] Requesting pairing code for +${phone} ...`);
-        const code = await sock.requestPairingCode(phone);
-        const pretty = code.match(/.{1,4}/g)?.join('-') || code;
-        console.log('\n' + '='.repeat(50));
-        console.log(`  PAIRING CODE:  ${pretty}`);
-        console.log('  WhatsApp > Linked Devices > Link with phone number');
-        console.log('  Enter the code above on your phone.');
-        console.log('='.repeat(50) + '\n');
+        await requestPairingCode(sock);
       } catch (e) {
         console.error('[TEKSI-MD] Pairing code error:', e.message);
       }
-    }, 3000);
+      stopPairingTimer();
+      pairingTimer = setTimeout(refreshPairingCode, config.qrTimeoutMs);
+    };
+    setTimeout(refreshPairingCode, 3000);
   }
 
   // ---------- Messages ----------
