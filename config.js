@@ -2,6 +2,10 @@
 //  TEKSI-MD  •  TEKSI  •  WhatsApp Bot Config
 // ============================================
 
+// Your real WhatsApp number, international format, NO + sign, NO spaces.
+// Override remotely with TEKSI_OWNER_NUMBER or OWNER_NUMBER if it is wrong.
+const OWNER_NUMBER = process.env.TEKSI_OWNER_NUMBER || process.env.OWNER_NUMBER || '254715442684';
+
 module.exports = {
   // Bot identity — edit these anytime
   botName: 'TEKSI-MD',
@@ -9,7 +13,7 @@ module.exports = {
   botVersion: '1.0.0',
 
   // OWNER — your phone number (country code + number, NO + sign, NO spaces)
-  ownerNumber: '254715442684',
+  ownerNumber: OWNER_NUMBER,
   ownerName: 'TEKSI OWNER',
 
   // Command prefix
@@ -26,8 +30,10 @@ module.exports = {
   selfMode: false,         // only owner can use bot (toggle with .self / .public)
 
   // Pairing code number — same as owner by default.
-  // If you want the bot on a DIFFERENT number, put that number here.
-  pairingNumber: '254715442684',
+  // If WhatsApp rejects linking, this is probably NOT your real number.
+  // Override remotely with TEKSI_PAIRING_NUMBER, e.g.:
+  //   export TEKSI_PAIRING_NUMBER=2547XXXXXXX
+  pairingNumber: process.env.TEKSI_PAIRING_NUMBER || OWNER_NUMBER,
 
   // How long each QR code stays valid while pairing (milliseconds).
   // Default: 120000 (120s). Override remotely with TEKSI_QR_TIMEOUT_MS
