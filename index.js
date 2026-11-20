@@ -46,7 +46,7 @@ function printPairingCode(code, phone) {
   console.log(`  TYPE ONLY:     ${code}   (8 chars, NO dash)`);
   console.log(`  WhatsApp account:  +${phone}`);
   console.log('  On THAT phone > Linked Devices > Link with phone number');
-  console.log(`  Expires in ${seconds}s — a fresh code appears automatically.`);
+  console.log(`  Valid for about ${seconds}s — if it expires, restart the bot for a new one.`);
   console.log('='.repeat(56) + '\n');
 }
 
