@@ -94,24 +94,6 @@ async function startBot() {
     fs.mkdirSync(config.sessionFolder, { recursive: true });
   }
 
-  // A failed pairing saves partial creds with registered=false. Loading those
-  // on the next start makes WhatsApp reject the socket with 401. Wipe them.
-  const credsPath = require('path').join(config.sessionFolder, 'creds.json');
-  if (fs.existsSync(credsPath)) {
-    try {
-      const saved = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-      if (!saved.registered) {
-        console.log('[TEKSI-MD] Removing incomplete session from a previous pairing attempt.');
-        fs.rmSync(config.sessionFolder, { recursive: true, force: true });
-        fs.mkdirSync(config.sessionFolder, { recursive: true });
-      }
-    } catch (e) {
-      console.log('[TEKSI-MD] Unreadable session found — resetting it.');
-      fs.rmSync(config.sessionFolder, { recursive: true, force: true });
-      fs.mkdirSync(config.sessionFolder, { recursive: true });
-    }
-  }
-
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
   const { version } = await fetchLatestBaileysVersion();
   console.log(`[TEKSI-MD] Baileys version: ${version.join('.')}`);
@@ -177,8 +159,11 @@ async function startBot() {
   });
 
   // 8-character (XXXX-XXXX) pairing code — QR is optional and off by default.
-  // One code, shown once. Restart the bot if you need a new one.
-  if (!sock.authState.creds.registered) {
+  // Baileys sets "account" after a successful QR link but leaves "registered"
+  // false, so check both. A fresh session has neither.
+  const creds = sock.authState.creds;
+  const alreadyLinked = Boolean(creds.registered || creds.account);
+  if (!alreadyLinked) {
     setTimeout(async () => {
       try {
         await requestPairingCode(sock);
