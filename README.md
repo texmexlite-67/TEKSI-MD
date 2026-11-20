@@ -1,4 +1,14 @@
-# TEKSI-MD • TEKSI — WhatsApp Multi-Device Bot
+<div align="center">
+  <img src="assets/TEKSI-MD_title.svg" alt="TEKSI-MD — WhatsApp Multi-Device Bot" width="760" />
+</div>
+
+<div align="center">
+  <img src="assets/TEKSI-MD_art.png" alt="TEKSI-MD artwork" width="220" />
+  <br />
+  <b>⚡ TEKSI-MD</b> <sub>• TEKSI — WhatsApp Multi-Device Bot</sub>
+</div>
+
+---
 
 **Bot Name:** `TEKSI-MD`  
 **Title:** `TEKSI`  
@@ -256,6 +266,7 @@ TEKSI-MD/
 ├── plugins/
 │   └── commands.js     # Commands + interactive controller
 ├── assets/
+│   ├── TEKSI-MD_title.svg # Sci-fi gradient title (README header)
 │   └── TEKSI-MD_art.png # Bot display picture artwork
 ├── session/            # WhatsApp login (never share)
 ├── data/               # Group settings (auto-created)
