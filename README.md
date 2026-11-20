@@ -25,11 +25,15 @@ Pair with a **pairing code** — no QR scan needed after the first time.
 ## 📦 Install (Termux / Phone)
 
 ```bash
-pkg install nodejs -y
+pkg install nodejs ffmpeg qpdf poppler zip unzip -y
 unzip TEKSI-MD.zip && cd TEKSI-MD
 npm install
 npm start
 ```
+
+`qpdf` powers `.pdflock` / `.pdfunlock`, `poppler` provides `pdftotext` for
+`.filetotxt`, `zip` / `unzip` power `.ziplock` / `.zipunlock`, and `ffmpeg`
+powers the audio edit commands. No Python packages are required on Termux.
 
 The terminal shows a **PAIRING CODE** like `ABCD-EFGH`.  
 On your phone: **WhatsApp → Settings → Linked Devices → Link with phone number**, then enter it.
