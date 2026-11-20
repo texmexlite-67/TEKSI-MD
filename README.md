@@ -33,7 +33,17 @@ npm start
 
 `qpdf` powers `.pdflock` / `.pdfunlock`, `poppler` provides `pdftotext` for
 `.filetotxt`, `zip` / `unzip` power `.ziplock` / `.zipunlock`, and `ffmpeg`
-powers the audio edit commands. No Python packages are required on Termux.
+powers the audio edit commands.
+
+`python` and `python-pillow` provide the image backend on Termux/arm32, where
+the native and WebAssembly builds of `sharp` often fail. `start.sh` installs
+these automatically. You can force this backend anywhere with:
+
+```bash
+export TEKSI_IMAGE_BACKEND=pillow
+```
+
+On PCs and Render, the real `sharp` package is still used automatically.
 
 The terminal shows a **PAIRING CODE** like `ABCD-EFGH`.  
 On your phone: **WhatsApp → Settings → Linked Devices → Link with phone number**, then enter it.

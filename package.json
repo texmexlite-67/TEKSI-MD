@@ -4,8 +4,8 @@
   "description": "TEKSI-MD — WhatsApp Multi-Device Bot (TEKSI)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "bash start.sh",
+    "dev": "bash start.sh"
   },
   "keywords": [
     "whatsapp",
