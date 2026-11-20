@@ -31,17 +31,40 @@ let groupListCache = { at: 0, groups: [] };
 let pairingTimer = null;
 let qrNoticeShown = false;
 
-function eightDigitCode() {
-  let code = '';
-  for (let i = 0; i < 8; i++) code += crypto.randomInt(0, 10);
-  return code;
+const CROCKFORD_CHARACTERS = '123456789ABCDEFGHJKLMNPQRSTVWXYZ';
+
+// Baileys' own pairing-code alphabet: 8 alphanumeric chars, no confusing 0/I/O/U.
+// 5 random bytes = 40 bits = exactly 8 Crockford characters.
+function crockfordCode() {
+  const bytes = crypto.randomBytes(5);
+  let value = 0;
+  let bitCount = 0;
+  const out = [];
+  for (const byte of bytes) {
+    value = (value << 8) | (byte & 0xff);
+    bitCount += 8;
+    while (bitCount >= 5) {
+      out.push(CROCKFORD_CHARACTERS.charAt((value >>> (bitCount - 5)) & 31));
+      bitCount -= 5;
+    }
+  }
+  if (bitCount > 0) {
+    out.push(CROCKFORD_CHARACTERS.charAt((value << (5 - bitCount)) & 31));
+  }
+  return out.join('');
+}
+
+// Show as XXXX-XXXX. WhatsApp takes the 8 characters; the dash is just a separator.
+function formatPairingCode(code) {
+  return String(code).match(/.{1,4}/g)?.join('-') || code;
 }
 
 function printPairingCode(code) {
   const seconds = Math.round(config.qrTimeoutMs / 1000);
   console.log('\n' + '='.repeat(50));
-  console.log(`  PAIRING CODE:  ${code}`);
+  console.log(`  PAIRING CODE:  ${formatPairingCode(code)}`);
   console.log('  WhatsApp > Linked Devices > Link with phone number');
+  console.log('  Enter the 8 characters — the dash is only a separator.');
   console.log(`  Expires in ${seconds}s — a fresh code appears automatically.`);
   console.log('='.repeat(50) + '\n');
 }
@@ -49,8 +72,8 @@ function printPairingCode(code) {
 async function requestPairingCode(sock) {
   const phone = String(config.pairingNumber || '').replace(/[^0-9]/g, '');
   if (!phone) throw new Error('pairingNumber is empty — set it in config.js');
-  const code = eightDigitCode();
-  console.log(`[TEKSI-MD] Requesting 8-digit pairing code for +${phone} ...`);
+  const code = crockfordCode();
+  console.log(`[TEKSI-MD] Requesting 8-character pairing code for +${phone} ...`);
   const accepted = await sock.requestPairingCode(phone, code);
   printPairingCode(accepted || code);
 }
@@ -130,7 +153,7 @@ async function startBot() {
         qrcode.generate(qr, { small: true });
       } else if (!qrNoticeShown) {
         qrNoticeShown = true;
-        console.log('[TEKSI-MD] QR display is disabled. Use the 8-digit pairing code below.');
+        console.log('[TEKSI-MD] QR display is disabled. Use the XXXX-XXXX pairing code below.');
       }
     }
 
@@ -167,7 +190,7 @@ async function startBot() {
     }
   });
 
-  // 8-digit pairing code only — QR is optional and off by default.
+  // 8-character (XXXX-XXXX) pairing code only — QR is optional and off by default.
   if (!sock.authState.creds.registered) {
     const refreshPairingCode = async () => {
       try {
