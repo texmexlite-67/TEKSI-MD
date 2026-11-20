@@ -44,91 +44,86 @@ async function isGroupAdmin(sock, jid, participant) {
   return !!p?.admin;
 }
 
+const ALL_COMMANDS = [
+  // MAIN
+  'menu', 'ping', 'runtime', 'speed', 'owner', 'info',
+  // TOOLS
+  'sticker', 'toimg', 'attp', 'calc', 'translate', 'weather',
+  // AI
+  'ai', 'imagine',
+  // FUN
+  'quote', 'joke',
+  // DOWNLOAD
+  'play', 'ytmp3', 'ytvideo', 'tiktok', 'instagram', 'facebook',
+  'mediafire', 'image', 'video', 'dl', 'movie',
+  // GROUP CONTROLLER
+  'control', 'gclink', 'invite', 'tagall', 'hidetag', 'admins',
+  'chatmute', 'chatunmute', 'pin', 'unpin', 'kick', 'add',
+  'promote', 'demote', 'open', 'close', 'lock', 'unlock',
+  'gprofile', 'gabout', 'groupname', 'gstatus', 'groupinfo', 'revoke',
+  'welcome', 'goodbye',
+  // GROUP GUARDS
+  'antilink', 'antispam', 'anticall', 'antistatus', 'antistatusmention',
+  // OWNER
+  'self', 'public', 'restart', 'eval',
+];
+
+function countCommands() {
+  return ALL_COMMANDS.length;
+}
+
 function buildMenu(pushName) {
   const { date, time } = getDateTime();
   const p = config.prefix;
-  return `*╭───「 ${config.botName} 」───*
-*│*  *${config.botTitle}*  •  WhatsApp Multi-Device Bot
-*╰────────────────────╯*
+  const uptime = formatUptime((Date.now() - startTime) / 1000);
+  const mode = config.selfMode ? 'Self (Owner Only)' : 'Public';
+  const cmdCount = countCommands();
 
-${getGreeting()}, *${pushName || 'User'}* 👋
+  const lines = [];
+  lines.push(`╭┈───〔 ${config.botName} 〕┈───⊷`);
+  lines.push(`├✦ Owner: ${config.ownerName} @${config.ownerNumber}`);
+  lines.push(`├✦ Commands: ${cmdCount}`);
+  lines.push(`├✦ Runtime: ${uptime}`);
+  lines.push(`├✦ Prefix: ${p}`);
+  lines.push(`├✦ Mode: ${mode}`);
+  lines.push(`├✦ Version: ${config.botVersion} Beta`);
+  lines.push(`╰─────────────────────⊷`);
+  lines.push('');
+  lines.push('『 MAIN 』');
+  lines.push(`${p}menu • ${p}ping • ${p}runtime • ${p}speed • ${p}owner • ${p}info`);
+  lines.push('');
+  lines.push('『 AI 』');
+  lines.push(`${p}ai <question> • ${p}imagine <prompt>`);
+  lines.push('');
+  lines.push('『 TOOLS 』');
+  lines.push(`${p}sticker • ${p}toimg • ${p}attp <text> • ${p}calc • ${p}translate • ${p}weather`);
+  lines.push('');
+  lines.push('『 FUN 』');
+  lines.push(`${p}quote • ${p}joke`);
+  lines.push('');
+  lines.push('『 DOWNLOAD 』');
+  lines.push(`${p}play / ${p}ytmp3 <song|url> • ${p}ytvideo <url>`);
+  lines.push(`${p}tiktok • ${p}instagram • ${p}facebook • ${p}mediafire <url>`);
+  lines.push(`${p}image • ${p}video • ${p}dl <url> • ${p}movie <title>`);
+  lines.push('');
+  lines.push('『 GROUP CONTROLLER 』 (Admin)');
+  lines.push(`${p}control • ${p}gclink • ${p}invite • ${p}tagall • ${p}hidetag • ${p}admins`);
+  lines.push(`${p}chatmute • ${p}chatunmute • ${p}pin • ${p}unpin • ${p}kick • ${p}add`);
+  lines.push(`${p}promote • ${p}demote • ${p}open • ${p}close • ${p}lock • ${p}unlock`);
+  lines.push(`${p}gprofile • ${p}gabout • ${p}groupname • ${p}gstatus • ${p}groupinfo • ${p}revoke`);
+  lines.push(`${p}welcome • ${p}goodbye`);
+  lines.push('');
+  lines.push('『 GROUP GUARDS 』 (Admin)');
+  lines.push(`${p}antilink on|warn|delete|off • ${p}antispam on/off`);
+  lines.push(`${p}anticall on/off • ${p}antistatus on/off • ${p}antistatusmention on/off`);
+  lines.push('');
+  lines.push('『 OWNER 』 (Owner Only)');
+  lines.push(`${p}self • ${p}public • ${p}restart • ${p}eval <code>`);
+  lines.push('');
+  lines.push(`_Powered by ${config.botName} • ${config.botTitle}_`);
+  lines.push(`_${getGreeting()}, ${pushName || 'User'} • ${date} ${time} EAT_`);
 
-*📅* ${date}
-*🕐* ${time} EAT
-*👑* Owner: @${config.ownerNumber}
-*⚡* Prefix: *${p}*
-*📱* Mode: ${config.selfMode ? 'Self (owner only)' : 'Public'}
-
-*╭───「 MAIN 」───*
-*│* ${p}menu / help
-*│* ${p}ping
-*│* ${p}runtime
-*│* ${p}owner
-*│* ${p}info
-*│* ${p}speed
-*╰───────────────*
-
-*╭───「 TOOLS 」───*
-*│* ${p}sticker  _(reply to image)_
-*│* ${p}toimg  _(reply to sticker)_
-*│* ${p}attp <text>
-*│* ${p}calc <math>
-*│* ${p}translate <text>
-*│* ${p}weather <city>
-*╰───────────────*
-
-*╭───「 AI 」───*
-*│* ${p}ai <question>
-*│* ${p}imagine <prompt>  _(AI image)_
-*╰───────────────*
-
-*╭───「 FUN 」───*
-*│* ${p}quote
-*│* ${p}joke
-*╰───────────────*
-
-*╭───「 DOWNLOAD 」───*
-*│* ${p}play / ${p}ytmp3 <song|url>
-*│* ${p}ytvideo <url>
-*│* ${p}instagram / ${p}facebook <url>
-*│* ${p}tiktok <url>
-*│* ${p}mediafire <url>
-*│* ${p}image / ${p}video <url>
-*│* ${p}movie <title>
-*╰───────────────*
-
-*╭───「 GROUP CONTROLLER 」* _(admin)_
-*│* ${p}control  _(button panel)_
-*│* ${p}gclink / ${p}invite
-*│* ${p}tag / ${p}hidetag / ${p}admins
-*│* ${p}chatmute / ${p}chatunmute
-*│* ${p}pin / ${p}unpin
-*│* ${p}kick / ${p}add
-*│* ${p}promote / ${p}demote
-*│* ${p}open / ${p}close / ${p}lock / ${p}unlock
-*│* ${p}gprofile / ${p}gabout / ${p}groupname
-*│* ${p}gstatus <text>  _(status mention)_
-*│* ${p}revoke / ${p}groupinfo
-*╰───────────────*
-
-*╭───「 GROUP GUARDS 」* _(admin)_
-*│* ${p}antilink on|warn|delete|off
-*│* ${p}antispam on/off
-*│* ${p}anticall on/off
-*│* ${p}antistatus on/off
-*│* ${p}antistatusmention on/off
-*│* ${p}welcome on/off
-*│* ${p}goodbye on/off
-*╰───────────────*
-
-*╭───「 OWNER 」───*
-*│* ${p}self / ${p}public
-*│* ${p}restart
-*│* ${p}eval <code>
-*╰───────────────*
-
-*${config.botName}*  •  *${config.botTitle}*
-_Powered by TEKSI-MD_`;
+  return lines.join('\n');
 }
 
 // ------------------------------- controller -------------------------------
@@ -368,7 +363,7 @@ async function handleCommand(sock, msg, ctx) {
         return reply(
           `*╭───「 ${config.botName} 」───*
 *│* Title: *${config.botTitle}*
-*│* Version: *${config.botVersion}*
+*│* Version: *${config.botVersion} Beta*
 *│* Owner: @${config.ownerNumber}
 *│* Prefix: *${config.prefix}*
 *│* Uptime: *${formatUptime((Date.now() - startTime) / 1000)}*
