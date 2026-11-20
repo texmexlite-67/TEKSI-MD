@@ -211,7 +211,13 @@ async function handleCommand(sock, msg, ctx) {
     return true;
   };
   const meta = async () => sock.groupMetadata(jid);
-  const sendFile = (file, caption) => sock.sendMessage(jid, dl.payload(file, caption), { quoted: msg });
+  const sendFile = async (file, caption) => {
+    try {
+      return await sock.sendMessage(jid, dl.payload(file, caption), { quoted: msg });
+    } finally {
+      file?.cleanup?.();
+    }
+  };
 
   // ---------- reusable group actions ----------
   const tagAll = async () => {
@@ -506,9 +512,8 @@ Wind: ${c.windspeedKmph} km/h ${c.winddir16Point}`
         await react(sock, msg, '⏳');
         try {
           const file = await dl.tiktok(url);
-          return sock.sendMessage(jid, file.image
-            ? { image: file.buffer, caption: file.caption }
-            : { video: file.buffer, caption: file.caption }, { quoted: msg });
+          if (file.image) file.mime = `image/${String(file.mime).split('/')[1] || 'jpeg'}`;
+          return await sendFile(file, file.caption);
         } catch (e) { return reply('TikTok download failed: ' + e.message); }
       }
 

@@ -31,7 +31,7 @@ module.exports = {
 
   // ---------- Downloads ----------
   // Max file size the bot will try to send (in MB).
-  downloadMaxMB: 50,
+  downloadMaxMB: 4096, // 4 GB — large files stream to disk instead of memory
 
   // Extra Invidious instances for YouTube downloads (optional).
   // The bot fetches healthy public instances automatically.

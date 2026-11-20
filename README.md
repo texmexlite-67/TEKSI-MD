@@ -65,7 +65,7 @@ botTitle: 'TEKSI',
 ownerNumber: '254715442684',
 pairingNumber: '254715442684',
 prefix: '.',
-downloadMaxMB: 50,
+downloadMaxMB: 4096, // 4 GB — large files stream to disk
 cobaltApiKey: '',  // optional — makes Instagram/Facebook downloads reliable
 botDp: true,                          // auto-set on first connection
 botDpFile: './assets/TEKSI-MD_art.png',
@@ -75,6 +75,8 @@ botDpFile: './assets/TEKSI-MD_art.png',
 YouTube downloads work without any key. For **video with sound**, install `ffmpeg` (and optionally `yt-dlp`) on the host; without ffmpeg the bot sends a video-only stream and says so in the caption.
 
 The bundled artwork in `assets/TEKSI-MD_art.png` is cropped to a square and applied as the bot's display picture on the first successful connection. Change `botDpFile` to use your own image, or run `.setdp` after replacing the file.
+
+Downloads are capped at **4 GB** (`downloadMaxMB: 4096`). Files over 64 MB stream to a temporary file instead of being held in RAM; small files stay in memory. Note that WhatsApp itself still rejects very large uploads on some clients, so the practical send limit depends on the linked device.
 
 ---
 
