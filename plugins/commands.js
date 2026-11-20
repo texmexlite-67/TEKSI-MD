@@ -5,6 +5,7 @@ const axios = require('axios');
 const config = require('../config');
 const settings = require('../lib/settings');
 const dl = require('../lib/downloader');
+const { setBotProfilePicture } = require('../lib/profile');
 const { formatUptime, getGreeting, getDateTime, random, normalizeNumber } = require('../lib/utils');
 const { imageToSticker, textToSticker } = require('../lib/sticker');
 const { askAI, generateImage } = require('../lib/ai');
@@ -65,7 +66,7 @@ const ALL_COMMANDS = [
   // GROUP GUARDS
   'antilink', 'antispam', 'anticall', 'antistatus', 'antistatusmention',
   // OWNER
-  'self', 'public', 'restart', 'eval',
+  'self', 'public', 'restart', 'eval', 'setdp',
 ];
 
 function countCommands() {
@@ -118,7 +119,7 @@ function buildMenu(pushName) {
   lines.push(`${p}anticall on/off • ${p}antistatus on/off • ${p}antistatusmention on/off`);
   lines.push('');
   lines.push('『 OWNER 』 (Owner Only)');
-  lines.push(`${p}self • ${p}public • ${p}restart • ${p}eval <code>`);
+  lines.push(`${p}self • ${p}public • ${p}restart • ${p}eval <code> • ${p}setdp`);
   lines.push('');
   lines.push(`_Powered by ${config.botName} • ${config.botTitle}_`);
   lines.push(`_${getGreeting()}, ${pushName || 'User'} • ${date} ${time} EAT_`);
@@ -825,6 +826,21 @@ ${members}`,
         if (!isOwner) return reply('Owner only.');
         config.selfMode = false;
         return reply('Bot is now *PUBLIC* — everyone can use it.');
+      }
+
+      case 'setdp':
+      case 'dp':
+      case 'botpic':
+      case 'setprofile': {
+        if (!isOwner) return reply('Owner only.');
+        await react(sock, msg, '⏳');
+        try {
+          await setBotProfilePicture(sock, config.botDpFile);
+          settings.setGlobal('botDpApplied', true);
+          return reply('Bot display picture updated. ✅');
+        } catch (e) {
+          return reply('Could not update DP: ' + e.message);
+        }
       }
 
       case 'restart': {

@@ -16,6 +16,7 @@ const fs = require('fs');
 
 const config = require('./config');
 const settings = require('./lib/settings');
+const { setBotProfilePicture } = require('./lib/profile');
 const { handleCommand, handleControllerAction } = require('./plugins/commands');
 const { normalizeNumber } = require('./lib/utils');
 
@@ -95,6 +96,17 @@ async function startBot() {
     if (connection === 'open') {
       console.log(`\n[TEKSI-MD] ✅ Connected as ${sock.user?.id || config.pairingNumber}`);
       console.log(`[TEKSI-MD] Bot is ONLINE — send "${config.prefix}menu" in WhatsApp.\n`);
+
+      // Apply the bundled display picture once per installation.
+      if (config.botDp && !settings.getGlobal('botDpApplied', false)) {
+        try {
+          await setBotProfilePicture(sock, config.botDpFile);
+          settings.setGlobal('botDpApplied', true);
+          console.log('[TEKSI-MD] Bot display picture updated from assets.');
+        } catch (e) {
+          console.error('[TEKSI-MD] Bot DP update failed:', e.message);
+        }
+      }
     }
 
     if (connection === 'close') {

@@ -67,10 +67,14 @@ pairingNumber: '254715442684',
 prefix: '.',
 downloadMaxMB: 50,
 cobaltApiKey: '',  // optional — makes Instagram/Facebook downloads reliable
+botDp: true,                          // auto-set on first connection
+botDpFile: './assets/TEKSI-MD_art.png',
 ```
 
 `cobaltApiKey` can also be set with the `COBALT_API_KEY` environment variable.  
 YouTube downloads work without any key. For **video with sound**, install `ffmpeg` (and optionally `yt-dlp`) on the host; without ffmpeg the bot sends a video-only stream and says so in the caption.
+
+The bundled artwork in `assets/TEKSI-MD_art.png` is cropped to a square and applied as the bot's display picture on the first successful connection. Change `botDpFile` to use your own image, or run `.setdp` after replacing the file.
 
 ---
 
@@ -135,6 +139,7 @@ All guard settings are per group (except anticall/antistatus, which are global) 
 | Command | What it does |
 |---|---|
 | `.self` / `.public` | Restrict / open the bot |
+| `.setdp` / `.dp` | Re-apply the bundled bot display picture |
 | `.restart`, `.eval <code>` | Restart / evaluate code |
 
 ---
@@ -153,6 +158,8 @@ TEKSI-MD/
 │   └── downloader.js   # YouTube / social / direct download helpers
 ├── plugins/
 │   └── commands.js     # Commands + interactive controller
+├── assets/
+│   └── TEKSI-MD_art.png # Bot display picture artwork
 ├── session/            # WhatsApp login (never share)
 ├── data/               # Group settings (auto-created)
 └── README.md

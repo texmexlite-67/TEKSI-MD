@@ -42,4 +42,10 @@ module.exports = {
   // the COBALT_API_KEY environment variable.
   cobaltApiKey: '',
   cobaltInstance: 'https://api.cobalt.tools',
+
+  // ---------- Bot display picture ----------
+  // Applied automatically on the first successful connection and can be
+  // refreshed any time with the owner command ".setdp".
+  botDp: true,
+  botDpFile: './assets/TEKSI-MD_art.png',
 };
