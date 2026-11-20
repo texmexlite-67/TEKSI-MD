@@ -35,14 +35,6 @@ module.exports = {
   //   export TEKSI_PAIRING_NUMBER=2547XXXXXXX
   pairingNumber: process.env.TEKSI_PAIRING_NUMBER || OWNER_NUMBER,
 
-  // How long each QR code stays valid while pairing (milliseconds).
-  // Default: 120000 (120s). Override remotely with TEKSI_QR_TIMEOUT_MS
-  // or PAIR_TIMEOUT_MS, e.g. PAIR_TIMEOUT_MS=180000
-  qrTimeoutMs: (() => {
-    const value = Number(process.env.TEKSI_QR_TIMEOUT_MS || process.env.PAIR_TIMEOUT_MS);
-    return Number.isFinite(value) && value > 0 ? value : 120000;
-  })(),
-
   // QR display is OFF by default — we use the 8-digit pairing code instead.
   // Enable temporarily with TEKSI_SHOW_QR=1 if you really need a QR.
   showQr: (process.env.TEKSI_SHOW_QR || '').toLowerCase() === '1' ||

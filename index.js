@@ -1,6 +1,6 @@
 // ============================================
 //  TEKSI-MD  •  TEKSI  —  WhatsApp Multi-Device Bot
-//  Owner: 254715442684
+//  Owner: 254708335403
 // ============================================
 const {
   makeWASocket,
@@ -13,7 +13,6 @@ const {
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
-const crypto = require('crypto');
 
 const config = require('./config');
 const settings = require('./lib/settings');
@@ -28,10 +27,6 @@ const ALLOWED_LINK_RE = /(chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)/i;
 const spamTracker = new Map();
 const statusNotified = new Map();
 let groupListCache = { at: 0, groups: [] };
-let pairingTimer = null;
-let pairingToken = 0;
-let activeSock = null;
-let autoResetDone = false;
 let qrNoticeShown = false;
 
 // Show as XXXX-XXXX. WhatsApp takes the 8 characters; the dash is just a separator.
@@ -40,13 +35,12 @@ function formatPairingCode(code) {
 }
 
 function printPairingCode(code, phone) {
-  const seconds = Math.round(config.qrTimeoutMs / 1000);
   console.log('\n' + '='.repeat(56));
   console.log(`  PAIRING CODE:  ${formatPairingCode(code)}`);
   console.log(`  TYPE ONLY:     ${code}   (8 chars, NO dash)`);
   console.log(`  WhatsApp account:  +${phone}`);
   console.log('  On THAT phone > Linked Devices > Link with phone number');
-  console.log(`  Valid for about ${seconds}s — if it expires, restart the bot for a new one.`);
+  console.log('  Valid for ~2 minutes — if it expires, restart the bot for a new one.');
   console.log('='.repeat(56) + '\n');
 }
 
@@ -59,14 +53,6 @@ async function requestPairingCode(sock) {
   console.log(`[TEKSI-MD] Requesting 8-character pairing code for +${phone} ...`);
   const accepted = await sock.requestPairingCode(phone);
   printPairingCode(accepted, phone);
-}
-
-function stopPairingTimer() {
-  pairingToken++; // invalidate any in-flight pairing refresh
-  if (pairingTimer) {
-    clearTimeout(pairingTimer);
-    pairingTimer = null;
-  }
 }
 
 function banner() {
@@ -103,13 +89,6 @@ async function participatingGroups(sock) {
 
 async function startBot() {
   banner();
-  stopPairingTimer();
-
-  // Never leave two sockets sharing the same session — WhatsApp logs them out.
-  if (activeSock) {
-    try { activeSock.end(); } catch {}
-    activeSock = null;
-  }
 
   if (!fs.existsSync(config.sessionFolder)) {
     fs.mkdirSync(config.sessionFolder, { recursive: true });
@@ -151,7 +130,6 @@ async function startBot() {
     // mid-pairing, invalidating the pairing code the user is typing.
   });
 
-  activeSock = sock;
   sock.ev.on('creds.update', saveCreds);
 
   // ---------- Connection ----------
@@ -169,7 +147,6 @@ async function startBot() {
     }
 
     if (connection === 'open') {
-      stopPairingTimer();
       console.log(`\n[TEKSI-MD] ✅ Connected as ${sock.user?.id || config.pairingNumber}`);
       console.log(`[TEKSI-MD] Bot is ONLINE — send "${config.prefix}menu" in WhatsApp.\n`);
 
@@ -186,7 +163,6 @@ async function startBot() {
     }
 
     if (connection === 'close') {
-      stopPairingTimer();
       const code = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
       console.log(`[TEKSI-MD] Connection closed (${code}). Reconnecting: ${shouldReconnect}`);
@@ -194,47 +170,22 @@ async function startBot() {
         setTimeout(startBot, 3000);
       } else {
         const sessionPath = require('path').resolve(config.sessionFolder);
-        console.log(`[TEKSI-MD] Logged out (401). This session is no longer valid.`);
-        if (!autoResetDone) {
-          autoResetDone = true;
-          console.log('[TEKSI-MD] Auto-resetting the session and retrying once...');
-          try { fs.rmSync(config.sessionFolder, { recursive: true, force: true }); } catch {}
-          setTimeout(startBot, 3000);
-        } else {
-          console.log(`[TEKSI-MD] Fix: rm -rf "${sessionPath}"  then run: npm start`);
-          console.log('[TEKSI-MD] There is no "session ID" folder — it is the session/ directory in the project.');
-        }
+        console.log('[TEKSI-MD] Logged out (401). Session is no longer valid.');
+        console.log(`[TEKSI-MD] Fix: rm -rf "${sessionPath}"  then run: node index.js`);
       }
     }
   });
 
-  // 8-character (XXXX-XXXX) pairing code only — QR is optional and off by default.
-  const forcePair = ['1', 'true', 'yes'].includes(
-    String(process.env.TEKSI_FORCE_PAIR || '').toLowerCase()
-  );
-  const registered = Boolean(sock.authState.creds.registered);
-
-  if (!registered || forcePair) {
-    if (forcePair) {
-      console.log('[TEKSI-MD] TEKSI_FORCE_PAIR=1 — requesting a fresh pairing code anyway.');
-    }
-    // Show ONE code and leave it alone. Auto-refreshing used to replace the
-    // code while the user was still navigating WhatsApp, so every code they
-    // typed was already stale. Restart the bot if you need a new one.
-    const requestToken = pairingToken;
+  // 8-character (XXXX-XXXX) pairing code — QR is optional and off by default.
+  // One code, shown once. Restart the bot if you need a new one.
+  if (!sock.authState.creds.registered) {
     setTimeout(async () => {
-      if (requestToken !== pairingToken) return;
       try {
         await requestPairingCode(sock);
       } catch (e) {
         console.error('[TEKSI-MD] Pairing code error:', e.message);
       }
     }, 3000);
-    console.log('[TEKSI-MD] Code stays live until used. Restart the bot for a new one.');
-  } else {
-    console.log('[TEKSI-MD] Session looks registered — waiting for connection.');
-    console.log('[TEKSI-MD] If it never connects: rm -rf session, then restart.');
-    console.log('[TEKSI-MD] Or force a fresh code with: export TEKSI_FORCE_PAIR=1');
   }
 
   // ---------- Messages ----------
