@@ -4,7 +4,7 @@
 
 // Your real WhatsApp number, international format, NO + sign, NO spaces.
 // Override remotely with TEKSI_OWNER_NUMBER or OWNER_NUMBER if it is wrong.
-const OWNER_NUMBER = process.env.TEKSI_OWNER_NUMBER || process.env.OWNER_NUMBER || '254708335403';
+const OWNER_NUMBER = process.env.TEKSI_OWNER_NUMBER || process.env.OWNER_NUMBER || '254715442684';
 
 module.exports = {
   // Bot identity — edit these anytime
