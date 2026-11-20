@@ -31,30 +31,8 @@ let groupListCache = { at: 0, groups: [] };
 let pairingTimer = null;
 let pairingToken = 0;
 let activeSock = null;
+let autoResetDone = false;
 let qrNoticeShown = false;
-
-const CROCKFORD_CHARACTERS = '123456789ABCDEFGHJKLMNPQRSTVWXYZ';
-
-// Baileys' own pairing-code alphabet: 8 alphanumeric chars, no confusing 0/I/O/U.
-// 5 random bytes = 40 bits = exactly 8 Crockford characters.
-function crockfordCode() {
-  const bytes = crypto.randomBytes(5);
-  let value = 0;
-  let bitCount = 0;
-  const out = [];
-  for (const byte of bytes) {
-    value = (value << 8) | (byte & 0xff);
-    bitCount += 8;
-    while (bitCount >= 5) {
-      out.push(CROCKFORD_CHARACTERS.charAt((value >>> (bitCount - 5)) & 31));
-      bitCount -= 5;
-    }
-  }
-  if (bitCount > 0) {
-    out.push(CROCKFORD_CHARACTERS.charAt((value << (5 - bitCount)) & 31));
-  }
-  return out.join('');
-}
 
 // Show as XXXX-XXXX. WhatsApp takes the 8 characters; the dash is just a separator.
 function formatPairingCode(code) {
@@ -78,10 +56,9 @@ async function requestPairingCode(sock) {
   if (phone.length < 10 || phone.length > 15) {
     console.warn(`[TEKSI-MD] WARNING: +${phone} looks invalid. Set TEKSI_PAIRING_NUMBER to your real WhatsApp number.`);
   }
-  const code = crockfordCode();
   console.log(`[TEKSI-MD] Requesting 8-character pairing code for +${phone} ...`);
-  const accepted = await sock.requestPairingCode(phone, code);
-  printPairingCode(accepted || code, phone);
+  const accepted = await sock.requestPairingCode(phone);
+  printPairingCode(accepted, phone);
 }
 
 function stopPairingTimer() {
@@ -136,6 +113,24 @@ async function startBot() {
 
   if (!fs.existsSync(config.sessionFolder)) {
     fs.mkdirSync(config.sessionFolder, { recursive: true });
+  }
+
+  // A failed pairing saves partial creds with registered=false. Loading those
+  // on the next start makes WhatsApp reject the socket with 401. Wipe them.
+  const credsPath = require('path').join(config.sessionFolder, 'creds.json');
+  if (fs.existsSync(credsPath)) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      if (!saved.registered) {
+        console.log('[TEKSI-MD] Removing incomplete session from a previous pairing attempt.');
+        fs.rmSync(config.sessionFolder, { recursive: true, force: true });
+        fs.mkdirSync(config.sessionFolder, { recursive: true });
+      }
+    } catch (e) {
+      console.log('[TEKSI-MD] Unreadable session found — resetting it.');
+      fs.rmSync(config.sessionFolder, { recursive: true, force: true });
+      fs.mkdirSync(config.sessionFolder, { recursive: true });
+    }
   }
 
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
@@ -199,8 +194,15 @@ async function startBot() {
       } else {
         const sessionPath = require('path').resolve(config.sessionFolder);
         console.log(`[TEKSI-MD] Logged out (401). This session is no longer valid.`);
-        console.log(`[TEKSI-MD] Fix: rm -rf "${sessionPath}"  then run: npm start`);
-        console.log('[TEKSI-MD] There is no "session ID" folder — it is the session/ directory in the project.');
+        if (!autoResetDone) {
+          autoResetDone = true;
+          console.log('[TEKSI-MD] Auto-resetting the session and retrying once...');
+          try { fs.rmSync(config.sessionFolder, { recursive: true, force: true }); } catch {}
+          setTimeout(startBot, 3000);
+        } else {
+          console.log(`[TEKSI-MD] Fix: rm -rf "${sessionPath}"  then run: npm start`);
+          console.log('[TEKSI-MD] There is no "session ID" folder — it is the session/ directory in the project.');
+        }
       }
     }
   });
