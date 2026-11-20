@@ -63,9 +63,9 @@ function printPairingCode(code, phone) {
   const seconds = Math.round(config.qrTimeoutMs / 1000);
   console.log('\n' + '='.repeat(56));
   console.log(`  PAIRING CODE:  ${formatPairingCode(code)}`);
+  console.log(`  TYPE ONLY:     ${code}   (8 chars, NO dash)`);
   console.log(`  WhatsApp account:  +${phone}`);
   console.log('  On THAT phone > Linked Devices > Link with phone number');
-  console.log('  Enter the 8 characters — the dash is only a separator.');
   console.log(`  Expires in ${seconds}s — a fresh code appears automatically.`);
   console.log('='.repeat(56) + '\n');
 }
@@ -196,7 +196,15 @@ async function startBot() {
   });
 
   // 8-character (XXXX-XXXX) pairing code only — QR is optional and off by default.
-  if (!sock.authState.creds.registered) {
+  const forcePair = ['1', 'true', 'yes'].includes(
+    String(process.env.TEKSI_FORCE_PAIR || '').toLowerCase()
+  );
+  const registered = Boolean(sock.authState.creds.registered);
+
+  if (!registered || forcePair) {
+    if (forcePair) {
+      console.log('[TEKSI-MD] TEKSI_FORCE_PAIR=1 — requesting a fresh pairing code anyway.');
+    }
     const refreshPairingCode = async () => {
       try {
         await requestPairingCode(sock);
@@ -207,6 +215,10 @@ async function startBot() {
       pairingTimer = setTimeout(refreshPairingCode, config.qrTimeoutMs);
     };
     setTimeout(refreshPairingCode, 3000);
+  } else {
+    console.log('[TEKSI-MD] Session looks registered — waiting for connection.');
+    console.log('[TEKSI-MD] If it never connects: rm -rf session, then restart.');
+    console.log('[TEKSI-MD] Or force a fresh code with: export TEKSI_FORCE_PAIR=1');
   }
 
   // ---------- Messages ----------
