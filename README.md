@@ -3,7 +3,7 @@
 </div>
 
 <div align="center">
-  <img src="assets/TEKSI-MD_art.png" alt="TEKSI-MD artwork" width="220" />
+  <img src="assets/TEKSI-MD_art.png" alt="TEKSI-MD artwork" width="880" />
   <br />
   <b>⚡ TEKSI-MD</b> <sub>• TEKSI — WhatsApp Multi-Device Bot</sub>
 </div>
