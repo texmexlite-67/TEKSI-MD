@@ -13,13 +13,19 @@ const {
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
-const path = require('path');
 
 const config = require('./config');
-const { handleCommand } = require('./plugins/commands');
+const settings = require('./lib/settings');
+const { handleCommand, handleControllerAction } = require('./plugins/commands');
 const { normalizeNumber } = require('./lib/utils');
 
 const logger = pino({ level: 'silent' });
+const LINK_RE = /https?:\/\/[^\s]+/i;
+const ALLOWED_LINK_RE = /(chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)/i;
+
+const spamTracker = new Map();
+const statusNotified = new Map();
+let groupListCache = { at: 0, groups: [] };
 
 function banner() {
   console.log('\n' + '='.repeat(50));
@@ -27,6 +33,29 @@ function banner() {
   console.log('  WhatsApp Multi-Device Bot');
   console.log(`  Owner: ${config.ownerNumber}`);
   console.log('='.repeat(50) + '\n');
+}
+
+// Keep the last few messages per sender for anti-spam.
+function spamHits(jid, sender, key) {
+  const mapKey = `${jid}|${sender}`;
+  const now = Date.now();
+  let entries = (spamTracker.get(mapKey) || []).filter((x) => now - x.at < 10000);
+  entries.push({ at: now, key });
+  spamTracker.set(mapKey, entries);
+  if (entries.length >= 5) {
+    spamTracker.set(mapKey, []);
+    return entries.map((x) => x.key);
+  }
+  return null;
+}
+
+async function participatingGroups(sock) {
+  if (groupListCache.groups.length && Date.now() - groupListCache.at < 5 * 60 * 1000) return groupListCache.groups;
+  try {
+    const data = await sock.groupFetchAllParticipating();
+    groupListCache = { at: Date.now(), groups: Object.values(data || {}) };
+  } catch { /* keep the old cache */ }
+  return groupListCache.groups;
 }
 
 async function startBot() {
@@ -78,11 +107,6 @@ async function startBot() {
         console.log('[TEKSI-MD] Logged out. Delete the "session" folder and restart to pair again.');
       }
     }
-
-    // Pairing code (first run only)
-    if (!sock.authState.creds.registered && connection === 'close' || (!sock.authState.creds.registered && qr)) {
-      // handled below via pairing request
-    }
   });
 
   // Request pairing code if not registered
@@ -118,35 +142,88 @@ async function startBot() {
         const isOwner = senderNum === config.ownerNumber;
         const pushName = msg.pushName || 'User';
 
-        // Auto-read status
+        // ---- Interactive controller buttons ----
+        const selected =
+          msg.message.buttonsResponseMessage?.selectedButtonId ||
+          msg.message.templateButtonReplyMessage?.selectedId ||
+          msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
+        if (selected && String(selected).startsWith('ctrl:')) {
+          await handleControllerAction(sock, msg, String(selected));
+          continue;
+        }
+
+        let isAdmin = false;
+        let senderIsAdmin = false;
+        if (isGroup) {
+          const meta = await sock.groupMetadata(remoteJid).catch(() => null);
+          const me = meta?.participants?.find((p) => normalizeNumber(p.id) === normalizeNumber(sock.user?.id));
+          isAdmin = !!me?.admin;
+          senderIsAdmin = !!meta?.participants?.find((p) => p.id === sender)?.admin;
+        }
+
+        // ---- Status handling (antistatus) ----
         if (isStatus) {
-          if (config.autoReadStatus) {
-            await sock.readMessages([msg.key]).catch(() => {});
+          if (config.autoReadStatus) await sock.readMessages([msg.key]).catch(() => {});
+          if (settings.getGlobal('antistatus', false)) {
+            const author = msg.key.participant || remoteJid;
+            const num = normalizeNumber(author);
+            const tag = `status:${num}`;
+            const now = Date.now();
+            if (num && now - (statusNotified.get(tag) || 0) > 60 * 60 * 1000) {
+              statusNotified.set(tag, now);
+              const mention = settings.getGlobal('antistatusMention', false);
+              for (const group of await participatingGroups(sock)) {
+                if (!group.participants?.some((p) => p.id === author)) continue;
+                await sock.sendMessage(group.id, {
+                  text: `📸 @${num} just posted a status.`,
+                  ...(mention ? { mentions: [author] } : {}),
+                }).catch(() => {});
+              }
+            }
           }
           continue;
         }
 
-        if (config.autoReadMessages) {
+        if (config.autoReadMessages && !isStatus) {
           await sock.readMessages([msg.key]).catch(() => {});
         }
 
-        // Extract text (normal, edited, quoted, etc.)
+        // Extract text (normal, edited, quoted, button replies, etc.)
         const textMsg =
           msg.message.conversation ||
           msg.message.extendedTextMessage?.text ||
+          msg.message.buttonsResponseMessage?.selectedDisplayText ||
+          msg.message.listResponseMessage?.title ||
           msg.message.imageMessage?.caption ||
           msg.message.videoMessage?.caption ||
           '';
         const text = String(textMsg).trim();
-        if (!text) continue;
 
-        // Anti-link (groups)
-        if (isGroup && config.antiLink && !isOwner && /https?:\/\//i.test(text)) {
-          const meta = await sock.groupMetadata(remoteJid).catch(() => null);
-          const me = meta?.participants?.find(p => normalizeNumber(p.id) === normalizeNumber(sock.user?.id));
-          if (me?.admin) {
+        // ---- Anti-link (per group) ----
+        if (isGroup && text && LINK_RE.test(text) && !ALLOWED_LINK_RE.test(text) && !isOwner && !senderIsAdmin) {
+          const mode = settings.getGroup(remoteJid).antilink;
+          if (mode === 'delete') {
             await sock.sendMessage(remoteJid, { delete: msg.key }).catch(() => {});
-            await sock.sendMessage(remoteJid, { text: `@${senderNum} Links are not allowed here.`, mentions: [sender] });
+            await sock.sendMessage(remoteJid, {
+              text: `@${senderNum} Links are not allowed here.`, mentions: [sender],
+            }).catch(() => {});
+            continue;
+          }
+          if (mode === 'warn') {
+            await sock.sendMessage(remoteJid, {
+              text: `@${senderNum} ⚠️ Links are not allowed here.`, mentions: [sender],
+            }, { quoted: msg }).catch(() => {});
+          }
+        }
+
+        // ---- Anti-spam (per group) ----
+        if (isGroup && text && !isOwner && !senderIsAdmin && settings.getGroup(remoteJid).antispam) {
+          const keys = spamHits(remoteJid, sender, msg.key);
+          if (keys) {
+            for (const key of keys) await sock.sendMessage(remoteJid, { delete: key }).catch(() => {});
+            await sock.sendMessage(remoteJid, {
+              text: `@${senderNum} 🛡 Anti-spam triggered — slow down.`, mentions: [sender],
+            }).catch(() => {});
             continue;
           }
         }
@@ -163,37 +240,23 @@ async function startBot() {
         // Self mode check
         if (config.selfMode && !isOwner) continue;
 
-        // Group admin check
-        let isAdmin = false;
-        if (isGroup) {
-          const meta = await sock.groupMetadata(remoteJid).catch(() => null);
-          const me = meta?.participants?.find(p => normalizeNumber(p.id) === normalizeNumber(sock.user?.id));
-          isAdmin = !!me?.admin;
-        }
-
         const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage
-          ? { message: msg.message.extendedTextMessage.contextInfo.quotedMessage, key: msg.message.extendedTextMessage.contextInfo.quotedMessage ? msg.message.extendedTextMessage.contextInfo : null, participant: msg.message.extendedTextMessage.contextInfo.participant }
-          : null;
-
-        // Better quoted object for downloadMediaMessage compatibility
-        let quotedFull = null;
-        if (msg.message.extendedTextMessage?.contextInfo?.quotedMessage) {
-          quotedFull = {
-            message: msg.message.extendedTextMessage.contextInfo.quotedMessage,
-            key: {
-              remoteJid: msg.message.extendedTextMessage.contextInfo.quotedMessage ? remoteJid : remoteJid,
-              id: msg.message.extendedTextMessage.contextInfo.stanzaId,
+          ? {
+              message: msg.message.extendedTextMessage.contextInfo.quotedMessage,
+              key: {
+                remoteJid,
+                id: msg.message.extendedTextMessage.contextInfo.stanzaId,
+                participant: msg.message.extendedTextMessage.contextInfo.participant,
+              },
               participant: msg.message.extendedTextMessage.contextInfo.participant,
-            },
-            participant: msg.message.extendedTextMessage.contextInfo.participant,
-          };
-        }
+            }
+          : null;
 
         await handleCommand(sock, msg, {
           command,
           args,
           text: argText,
-          quoted: quotedFull,
+          quoted,
           isOwner,
           isAdmin,
           isGroup,
@@ -206,12 +269,12 @@ async function startBot() {
     }
   });
 
-  // ---------- Welcome new members ----------
+  // ---------- Welcome / goodbye ----------
   sock.ev.on('group-participants.update', async (update) => {
     try {
-      if (!config.welcome) return;
       const { id: groupJid, participants, action } = update;
-      if (action === 'add') {
+      const group = settings.getGroup(groupJid);
+      if (action === 'add' && group.welcome) {
         for (const p of participants) {
           await sock.sendMessage(groupJid, {
             text: `*Karibu!* 👋 @${normalizeNumber(p)}\nWelcome to the group!\n\nType *${config.prefix}menu* to see what I can do.`,
@@ -219,13 +282,22 @@ async function startBot() {
           });
         }
       }
+      if (action === 'remove' && group.goodbye) {
+        for (const p of participants) {
+          await sock.sendMessage(groupJid, {
+            text: `*Goodbye!* 👋 @${normalizeNumber(p)} left the group.`,
+            mentions: [p],
+          });
+        }
+      }
     } catch (e) {
-      console.error('[TEKSI-MD] Welcome error:', e.message);
+      console.error('[TEKSI-MD] Welcome/goodbye error:', e.message);
     }
   });
 
-  // ---------- Auto-reject calls ----------
+  // ---------- Anti-call ----------
   sock.ev.on('call', async (calls) => {
+    if (!settings.getGlobal('anticall', true)) return;
     for (const call of calls) {
       if (call.status === 'offer') {
         await sock.rejectCall(call.id, call.from).catch(() => {});

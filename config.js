@@ -28,4 +28,18 @@ module.exports = {
   // Pairing code number — same as owner by default.
   // If you want the bot on a DIFFERENT number, put that number here.
   pairingNumber: '254715442684',
+
+  // ---------- Downloads ----------
+  // Max file size the bot will try to send (in MB).
+  downloadMaxMB: 50,
+
+  // Extra Invidious instances for YouTube downloads (optional).
+  // The bot fetches healthy public instances automatically.
+  invidiousInstances: [],
+
+  // Optional: a Cobalt API key makes Instagram / Facebook downloads reliable.
+  // Leave empty to use the public metadata fallback. Can also be set via
+  // the COBALT_API_KEY environment variable.
+  cobaltApiKey: '',
+  cobaltInstance: 'https://api.cobalt.tools',
 };
