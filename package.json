@@ -7,7 +7,13 @@
     "start": "node index.js",
     "dev": "node index.js"
   },
-  "keywords": ["whatsapp", "bot", "baileys", "multi-device", "teksi-md"],
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys",
+    "multi-device",
+    "teksi-md"
+  ],
   "author": "TEKSI-MD",
   "license": "MIT",
   "engines": {
@@ -15,7 +21,10 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.1",
+    "adm-zip": "^0.6.1",
     "axios": "^1.7.9",
+    "pdf-lib": "^1.17.1",
+    "pdf-to-img": "^7.0.2",
     "pino": "^9.5.0",
     "qrcode-terminal": "^0.12.0",
     "sharp": "^0.33.5"

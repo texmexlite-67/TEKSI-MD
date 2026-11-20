@@ -8,9 +8,22 @@ const dl = require('../lib/downloader');
 const { setBotProfilePicture } = require('../lib/profile');
 const { formatUptime, getGreeting, getDateTime, random, normalizeNumber } = require('../lib/utils');
 const { imageToSticker, textToSticker } = require('../lib/sticker');
-const { askAI, generateImage } = require('../lib/ai');
+const { askAI, generateImage, MODEL_LABELS } = require('../lib/ai');
+const extra = require('../lib/extra');
+const docs = require('../lib/docs');
+const images = require('../lib/images');
+const audio = require('../lib/audio');
 
 const startTime = Date.now();
+
+// Multi-step converters: .pdfmerge / .img2pdf accept several quoted files.
+const pendingFiles = new Map();
+function pendingFor(sender) {
+  const key = String(sender || 'unknown');
+  const entry = pendingFiles.get(key);
+  if (entry && Date.now() - entry.ts > 5 * 60 * 1000) pendingFiles.delete(key);
+  return pendingFiles.get(key);
+}
 
 const QUOTES = [
   'The best way to predict the future is to create it.',
@@ -48,15 +61,26 @@ async function isGroupAdmin(sock, jid, participant) {
 const ALL_COMMANDS = [
   // MAIN
   'menu', 'ping', 'runtime', 'speed', 'owner', 'info',
+  // STUDENT LAB
+  'pdfunlock', 'zipunlock', 'ziplock', 'txttofile', 'pdfmerge', 'pdfmergedone',
+  'pdf2img', 'compress', 'filetotxt', 'dictionary', 'wiki', 'img2pdf', 'img2pdfdone', 'pdflock',
   // TOOLS
+  'ip', 'whois', 'extractweb', 'base64', 'decode64', 'uuid', 'shortlink', 'hash',
   'sticker', 'toimg', 'attp', 'calc', 'translate', 'weather',
+  // LAB
+  'wallpaper', 'cat', 'dog', 'girldp', 'animedp', 'randomdp', 'coupledp',
   // AI
-  'ai', 'imagine',
+  'gpt', 'gpt1', 'gpt2', 'gpt3', 'gpt4', 'imagine', 'ask', 'gemini', 'ai',
+  'currency', 'crypto',
   // FUN
+  'meme', 'fact', 'ship', 'aura', 'advice', 'pickup', 'roast', 'roll',
+  'lovemeter', 'truth', 'dare', 'compliment', 'flip', 'emojimix', 'king',
   'quote', 'joke',
   // DOWNLOAD
   'play', 'ytmp3', 'ytvideo', 'tiktok', 'instagram', 'facebook',
   'mediafire', 'image', 'video', 'dl', 'movie',
+  // GROUP
+  'listadmin', 'setwelcome', 'setgoodbye', 'poll', 'announce', 'warn',
   // GROUP CONTROLLER
   'control', 'gclink', 'invite', 'tagall', 'hidetag', 'admins',
   'chatmute', 'chatunmute', 'pin', 'unpin', 'kick', 'add',
@@ -65,6 +89,8 @@ const ALL_COMMANDS = [
   'welcome', 'goodbye',
   // GROUP GUARDS
   'antilink', 'antispam', 'anticall', 'antistatus', 'antistatusmention',
+  // AUDIO EDIT TOOLS
+  'tomp3', 'to8daudio', 'tobass', 'toslowed',
   // OWNER
   'self', 'public', 'restart', 'eval', 'setdp',
 ];
@@ -93,13 +119,26 @@ function buildMenu(pushName) {
   lines.push('『 MAIN 』');
   lines.push(`${p}menu • ${p}ping • ${p}runtime • ${p}speed • ${p}owner • ${p}info`);
   lines.push('');
-  lines.push('『 AI 』');
-  lines.push(`${p}ai <question> • ${p}imagine <prompt>`);
+  lines.push('『 STUDENT LAB 』');
+  lines.push(`${p}pdfunlock • ${p}zipunlock • ${p}ziplock • ${p}txttofile • ${p}pdfmerge`);
+  lines.push(`${p}pdf2img • ${p}calc • ${p}compress • ${p}filetotxt • ${p}dictionary • ${p}wiki`);
+  lines.push(`${p}img2pdf • ${p}pdflock • ${p}translate`);
   lines.push('');
   lines.push('『 TOOLS 』');
-  lines.push(`${p}sticker • ${p}toimg • ${p}attp <text> • ${p}calc • ${p}translate • ${p}weather`);
+  lines.push(`${p}ip • ${p}whois • ${p}extractweb • ${p}ping • ${p}runtime`);
+  lines.push(`${p}base64 • ${p}decode64 • ${p}uuid • ${p}shortlink • ${p}hash`);
+  lines.push(`${p}sticker • ${p}toimg • ${p}attp • ${p}weather`);
+  lines.push('');
+  lines.push('『 LAB 』');
+  lines.push(`${p}wallpaper • ${p}cat • ${p}dog • ${p}girldp • ${p}animedp • ${p}randomdp • ${p}coupledp`);
+  lines.push('');
+  lines.push('『 AI 』');
+  lines.push(`${p}gpt • ${p}gpt1 • ${p}gpt2 • ${p}gpt3 • ${p}gpt4 • ${p}imagine`);
+  lines.push(`${p}weather • ${p}ask • ${p}gemini • ${p}ai • ${p}currency • ${p}crypto`);
   lines.push('');
   lines.push('『 FUN 』');
+  lines.push(`${p}meme • ${p}fact • ${p}ship • ${p}aura • ${p}advice • ${p}pickup • ${p}roast • ${p}roll`);
+  lines.push(`${p}lovemeter • ${p}truth • ${p}dare • ${p}compliment • ${p}flip • ${p}emojimix • ${p}king`);
   lines.push(`${p}quote • ${p}joke`);
   lines.push('');
   lines.push('『 DOWNLOAD 』');
@@ -107,12 +146,18 @@ function buildMenu(pushName) {
   lines.push(`${p}tiktok • ${p}instagram • ${p}facebook • ${p}mediafire <url>`);
   lines.push(`${p}image • ${p}video • ${p}dl <url> • ${p}movie <title>`);
   lines.push('');
+  lines.push('『 GROUP 』 (Admin)');
+  lines.push(`${p}welcome • ${p}goodbye • ${p}promote • ${p}demote • ${p}listadmin • ${p}setwelcome`);
+  lines.push(`${p}setgoodbye • ${p}setdesc • ${p}revoke • ${p}poll • ${p}announce • ${p}warn`);
+  lines.push('');
+  lines.push('『 AUDIO EDIT TOOLS 』');
+  lines.push(`${p}tomp3 • ${p}to8daudio • ${p}tobass • ${p}toslowed  _(reply to audio)_`);
+  lines.push('');
   lines.push('『 GROUP CONTROLLER 』 (Admin)');
   lines.push(`${p}control • ${p}gclink • ${p}invite • ${p}tagall • ${p}hidetag • ${p}admins`);
   lines.push(`${p}chatmute • ${p}chatunmute • ${p}pin • ${p}unpin • ${p}kick • ${p}add`);
-  lines.push(`${p}promote • ${p}demote • ${p}open • ${p}close • ${p}lock • ${p}unlock`);
-  lines.push(`${p}gprofile • ${p}gabout • ${p}groupname • ${p}gstatus • ${p}groupinfo • ${p}revoke`);
-  lines.push(`${p}welcome • ${p}goodbye`);
+  lines.push(`${p}open • ${p}close • ${p}lock • ${p}unlock`);
+  lines.push(`${p}gprofile • ${p}gabout • ${p}groupname • ${p}gstatus • ${p}groupinfo`);
   lines.push('');
   lines.push('『 GROUP GUARDS 』 (Admin)');
   lines.push(`${p}antilink on|warn|delete|off • ${p}antispam on/off`);
@@ -217,6 +262,28 @@ async function handleCommand(sock, msg, ctx) {
     } finally {
       file?.cleanup?.();
     }
+  };
+
+  const sendFiles = async (files, caption = '') => {
+    for (const [i, file] of files.entries()) {
+      await sendFile(file, files.length > 1 ? `${caption}\n_(${i + 1}/${files.length})_` : caption);
+    }
+  };
+
+  // Read the attachment on a replied-to message (or the command message).
+  const getQuotedMedia = async () => {
+    const q = quoted || msg;
+    const m = q.message || {};
+    const media = m.imageMessage || m.videoMessage || m.audioMessage || m.documentMessage || m.stickerMessage;
+    if (!media) return null;
+    const stream = await sock.downloadMediaMessage(q);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return {
+      buffer: Buffer.concat(chunks),
+      mime: media.mimetype || '',
+      name: media.fileName || '',
+    };
   };
 
   // ---------- reusable group actions ----------
@@ -444,14 +511,321 @@ Wind: ${c.windspeedKmph} km/h ${c.winddir16Point}`
         );
       }
 
+      // ---------- STUDENT LAB ----------
+      case 'pdfunlock': {
+        const file = await getQuotedMedia();
+        if (!file || docs.mimeKind(file.mime, file.name) !== 'pdf') return reply(`Reply to a *PDF* with ${config.prefix}pdfunlock`);
+        await react(sock, msg, '⏳');
+        try {
+          const out = await docs.pdfUnlock(file.buffer, first || '');
+          return sock.sendMessage(jid, { document: out.buffer, mimetype: 'application/pdf', fileName: out.name, caption: '*PDF unlocked* ✅' }, { quoted: msg });
+        } catch (e) { return reply('PDF unlock failed: ' + e.message); }
+      }
+
+      case 'pdflock': {
+        const file = await getQuotedMedia();
+        if (!file || docs.mimeKind(file.mime, file.name) !== 'pdf') return reply(`Reply to a *PDF* with ${config.prefix}pdflock <password>`);
+        const password = first || 'teksi123';
+        await react(sock, msg, '🔒');
+        try {
+          const out = await docs.pdfLock(file.buffer, password);
+          return sock.sendMessage(jid, { document: out.buffer, mimetype: 'application/pdf', fileName: out.name, caption: `*PDF locked* 🔒\nPassword: \`${password}\`` }, { quoted: msg });
+        } catch (e) { return reply('PDF lock failed: ' + e.message); }
+      }
+
+      case 'pdfmerge':
+      case 'pdfmergedone': {
+        const key = sender;
+        const pending = pendingFor(key) || { files: [], type: 'pdf' };
+        if (cmd === 'pdfmerge') {
+          const file = await getQuotedMedia();
+          if (file && docs.mimeKind(file.mime, file.name) === 'pdf') {
+            pending.files.push({ ...file, name: file.name || `document-${pending.files.length + 1}.pdf` });
+            pending.type = 'pdf';
+            pending.ts = Date.now();
+            pendingFiles.set(key, pending);
+            return reply(`📄 PDF added (${pending.files.length}). Reply to another PDF with ${config.prefix}pdfmerge, or send ${config.prefix}pdfmergedone when done.`);
+          }
+          if (!pending.files.length) return reply(`Reply to a PDF with ${config.prefix}pdfmerge. Repeat for more PDFs, then ${config.prefix}pdfmergedone.`);
+        }
+        if (pending.files.length < 2) return reply('Add at least 2 PDFs before merging.');
+        await react(sock, msg, '⏳');
+        try {
+          const out = await docs.pdfMerge(pending.files.map((f) => f.buffer));
+          pendingFiles.delete(key);
+          return sock.sendMessage(jid, { document: out.buffer, mimetype: 'application/pdf', fileName: out.name, caption: `*Merged ${pending.files.length} PDFs* ✅` }, { quoted: msg });
+        } catch (e) { return reply('PDF merge failed: ' + e.message); }
+      }
+
+      case 'pdf2img':
+      case 'pdftoimg': {
+        const file = await getQuotedMedia();
+        if (!file || docs.mimeKind(file.mime, file.name) !== 'pdf') return reply(`Reply to a *PDF* with ${config.prefix}pdf2img`);
+        await react(sock, msg, '⏳');
+        try {
+          const pages = await docs.pdfToImages(file.buffer, /jpe?g/i.test(first) ? 'jpg' : 'png');
+          return await sendFiles(pages, '*PDF → Images* 🖼');
+        } catch (e) { return reply('PDF to image failed: ' + e.message); }
+      }
+
+      case 'img2pdf':
+      case 'img2pdfdone': {
+        const key = sender;
+        const pending = pendingFor(key) || { files: [], type: 'image' };
+        if (cmd === 'img2pdf') {
+          const file = await getQuotedMedia();
+          if (file && (docs.mimeKind(file.mime, file.name) === 'image' || file.mime.startsWith('image/'))) {
+            pending.files.push({ ...file, name: file.name || `image-${pending.files.length + 1}.jpg` });
+            pending.type = 'image';
+            pending.ts = Date.now();
+            pendingFiles.set(key, pending);
+            return reply(`🖼 Image added (${pending.files.length}). Reply to another image with ${config.prefix}img2pdf, or send ${config.prefix}img2pdfdone when done.`);
+          }
+          if (!pending.files.length) return reply(`Reply to an image with ${config.prefix}img2pdf. Repeat for more images, then ${config.prefix}img2pdfdone.`);
+        }
+        if (!pending.files.length) return reply('Add at least 1 image first.');
+        await react(sock, msg, '⏳');
+        try {
+          const out = await docs.imgToPdf(pending.files);
+          pendingFiles.delete(key);
+          return sock.sendMessage(jid, { document: out.buffer, mimetype: 'application/pdf', fileName: out.name, caption: `*Created PDF from ${pending.files.length} image(s)* ✅` }, { quoted: msg });
+        } catch (e) { return reply('Image to PDF failed: ' + e.message); }
+      }
+
+      case 'ziplock': {
+        const password = first || 'teksi123';
+        const media = await getQuotedMedia();
+        const files = media
+          ? [{ ...media, name: media.name || `file-${Date.now()}.bin` }]
+          : [docs.txtToFile(rest || text || 'Created by TEKSI-MD', first.includes('.') ? first : 'note.txt')];
+        await react(sock, msg, '🔒');
+        try {
+          const out = await docs.zipLock(files, password);
+          return sock.sendMessage(jid, { document: out.buffer, mimetype: 'application/zip', fileName: out.name, caption: `*ZIP locked* 🔒\nPassword: \`${password}\`` }, { quoted: msg });
+        } catch (e) { return reply('ZIP lock failed: ' + e.message); }
+      }
+
+      case 'zipunlock': {
+        if (!first) return reply(`Usage: ${config.prefix}zipunlock <password>  (reply to the ZIP)`);
+        const file = await getQuotedMedia();
+        if (!file || !/\bzip\b|\.zip/i.test(`${file.mime} ${file.name}`)) return reply(`Reply to a *ZIP* file with ${config.prefix}zipunlock <password>`);
+        await react(sock, msg, '⏳');
+        try {
+          const files = await docs.zipUnlock(file.buffer, first);
+          return await sendFiles(files, '*ZIP unlocked* ✅');
+        } catch (e) { return reply('ZIP unlock failed: ' + e.message); }
+      }
+
+      case 'txttofile': {
+        if (!text) return reply(`Usage: ${config.prefix}txttofile <filename> <text>\nExample: ${config.prefix}txttofile notes.txt Hello world`);
+        const named = /\.[a-z0-9]{1,5}$/i.test(first);
+        const name = named ? first : 'note.txt';
+        const content = named ? (rest || text) : text;
+        await react(sock, msg, '📝');
+        const out = docs.txtToFile(content, name);
+        return sock.sendMessage(jid, { document: out.buffer, mimetype: 'text/plain', fileName: name, caption: '*Text → File* ✅' }, { quoted: msg });
+      }
+
+      case 'filetotxt': {
+        const file = await getQuotedMedia();
+        if (!file) return reply(`Reply to a *text file, PDF or ZIP* with ${config.prefix}filetotxt`);
+        await react(sock, msg, '⏳');
+        try {
+          const result = await docs.fileToText(file.buffer, file.name, file.mime);
+          if (result.length > 3500) {
+            const out = docs.txtToFile(result, 'extracted.txt');
+            return sock.sendMessage(jid, { document: out.buffer, mimetype: 'text/plain', fileName: 'extracted.txt', caption: '*FILE → TXT* ✅' }, { quoted: msg });
+          }
+          return reply(`*FILE → TXT*\n\n${result}`);
+        } catch (e) { return reply('FILETOTXT failed: ' + e.message); }
+      }
+
+      case 'compress': {
+        const file = await getQuotedMedia();
+        if (!file) return reply(`Reply to a *file* with ${config.prefix}compress`);
+        await react(sock, msg, '⏳');
+        try {
+          const out = await docs.compress(file.buffer, file.name, file.mime);
+          const before = file.buffer.length;
+          const after = out.buffer.length;
+          const saved = before > after ? `${Math.round((1 - after / before) * 100)}% smaller` : 'done';
+          return await sendFile(out, `*Compressed* ✅ (${saved})`);
+        } catch (e) { return reply('Compress failed: ' + e.message); }
+      }
+
+      case 'dictionary':
+      case 'define': {
+        if (!text) return reply(`Usage: ${config.prefix}dictionary <word>`);
+        await react(sock, msg, '📖');
+        try {
+          const r = await extra.dictionary(first);
+          return reply(`*📖 ${r.word}* ${r.phonetic ? `\n_${r.phonetic}_` : ''}\n\n${r.meanings}`);
+        } catch (e) { return reply('Dictionary lookup failed: ' + e.message); }
+      }
+
+      case 'wiki':
+      case 'wikipedia': {
+        if (!text) return reply(`Usage: ${config.prefix}wiki <topic>`);
+        await react(sock, msg, '📚');
+        try {
+          const r = await extra.wiki(text);
+          const caption = `*📚 ${r.title}*\n\n${r.extract}\n\n🔗 ${r.url}`;
+          if (r.thumbnail) {
+            try {
+              const { data } = await axios.get(r.thumbnail, {
+                responseType: 'arraybuffer', timeout: 30000,
+                headers: { 'User-Agent': 'TEKSI-MD/1.0 (https://github.com/texmexlite-67/TEKSI-MD)' },
+              });
+              return sock.sendMessage(jid, { image: Buffer.from(data), caption }, { quoted: msg });
+            } catch {}
+          }
+          return reply(caption);
+        } catch (e) { return reply('Wiki lookup failed: ' + e.message); }
+      }
+
+      // ---------- TOOLS ----------
+      case 'ip':
+      case 'myip': {
+        await react(sock, msg, '🌍');
+        try {
+          const r = await extra.ipInfo();
+          return reply(`*🌍 IP INFO*\n\nIP: *${r.ip}*${r.city ? `\nCity: ${r.city}` : ''}${r.region ? `\nRegion: ${r.region}` : ''}${r.country ? `\nCountry: ${r.country}` : ''}${r.isp ? `\nISP: ${r.isp}` : ''}${r.timezone ? `\nTimezone: ${r.timezone}` : ''}`);
+        } catch (e) { return reply('IP lookup failed: ' + e.message); }
+      }
+
+      case 'whois': {
+        if (!first) return reply(`Usage: ${config.prefix}whois <domain>`);
+        await react(sock, msg, '🔎');
+        try {
+          const r = await extra.whois(first);
+          return reply(`*🔎 WHOIS — ${r.domain}*\n\nRegistrar: ${r.registrar}\nCreated: ${r.created || '-'}\nUpdated: ${r.updated || '-'}\nExpires: ${r.expires || '-'}\nStatus: ${r.status.join(', ') || '-'}\nNameservers: ${r.nameservers.join(', ') || '-'}${r.emails.length ? `\nEmails: ${r.emails.join(', ')}` : ''}`);
+        } catch (e) { return reply('WHOIS failed: ' + e.message); }
+      }
+
+      case 'extractweb':
+      case 'readweb': {
+        const url = dl.extractUrl(text) || first;
+        if (!url) return reply(`Usage: ${config.prefix}extractweb <url>`);
+        await react(sock, msg, '⏳');
+        try {
+          const result = await extra.extractWeb(url);
+          return reply(`*🌐 EXTRACTED WEB*\n\n${result}`);
+        } catch (e) { return reply('Web extraction failed: ' + e.message); }
+      }
+
+      case 'base64':
+      case 'encode64': {
+        if (!text) return reply(`Usage: ${config.prefix}base64 <text>`);
+        return reply(`*BASE64*\n\n\`${extra.encode64(text)}\``);
+      }
+
+      case 'decode64':
+      case 'b64decode': {
+        if (!text) return reply(`Usage: ${config.prefix}decode64 <encoded text>`);
+        try { return reply(`*DECODED*\n\n${extra.decode64(text)}`); }
+        catch (e) { return reply('Invalid Base64 input.'); }
+      }
+
+      case 'uuid':
+        return reply(`*UUID*\n\n\`${extra.uuid()}\``);
+
+      case 'shortlink':
+      case 'shorten': {
+        const url = dl.extractUrl(text) || first;
+        if (!url) return reply(`Usage: ${config.prefix}shortlink <https://url>`);
+        await react(sock, msg, '🔗');
+        try { return reply(`*SHORT LINK*\n\n${await extra.shortlink(url)}`); }
+        catch (e) { return reply('Shortlink failed: ' + e.message); }
+      }
+
+      case 'hash': {
+        const value = /^(md5|sha1|sha224|sha256|sha384|sha512)$/i.test(first) ? rest : text;
+        const algo = /^(md5|sha1|sha224|sha256|sha384|sha512)$/i.test(first) ? first : 'sha256';
+        if (!value) return reply(`Usage: ${config.prefix}hash [md5|sha1|sha256] <text>`);
+        const r = extra.hash(value, algo);
+        return reply(`*HASH (${r.algo.toUpperCase()})*\n\nHex: \`${r.hex}\`\nBase64: \`${r.base64}\``);
+      }
+
+      // ---------- LAB ----------
+      case 'wallpaper': {
+        await react(sock, msg, '🖼');
+        try { return await sendFile(await images.wallpaper(), `*WALLPAPER* 🌄\n_${config.botName}_`); }
+        catch (e) { return reply('Wallpaper failed: ' + e.message); }
+      }
+
+      case 'cat': {
+        await react(sock, msg, '🐱');
+        try { return await sendFile(await images.cat(), '*CAT* 🐱'); }
+        catch (e) { return reply('Cat image failed: ' + e.message); }
+      }
+
+      case 'dog': {
+        await react(sock, msg, '🐶');
+        try { return await sendFile(await images.dog(), '*DOG* 🐶'); }
+        catch (e) { return reply('Dog image failed: ' + e.message); }
+      }
+
+      case 'girldp':
+      case 'waifu': {
+        await react(sock, msg, '🌸');
+        try { const f = await images.girlDp(); return await sendFile(f, f.caption || '*GIRL DP* 🌸'); }
+        catch (e) { return reply('Girl DP failed: ' + e.message); }
+      }
+
+      case 'animedp':
+      case 'neko': {
+        await react(sock, msg, '🎀');
+        try { const f = await images.animeDp(); return await sendFile(f, f.caption || '*ANIME DP* 🎀'); }
+        catch (e) { return reply('Anime DP failed: ' + e.message); }
+      }
+
+      case 'randomdp': {
+        await react(sock, msg, '🎲');
+        try { const f = await images.randomDp(); return await sendFile(f, f.caption || '*RANDOM DP* 🎲'); }
+        catch (e) { return reply('Random DP failed: ' + e.message); }
+      }
+
+      case 'coupledp':
+      case 'couple': {
+        await react(sock, msg, '💞');
+        try { return await sendFile(await images.coupleDp(), '*COUPLE DP* 💞'); }
+        catch (e) { return reply('Couple DP failed: ' + e.message); }
+      }
+
       // ---------- AI ----------
       case 'ai':
+      case 'ask':
       case 'gpt':
-      case 'ask': {
-        if (!text) return reply(`Usage: ${config.prefix}ai <your question>`);
+      case 'gpt1':
+      case 'gpt2':
+      case 'gpt3':
+      case 'gpt4':
+      case 'gemini': {
+        if (!text) return reply(`Usage: ${config.prefix}${cmd} <your question>`);
         await react(sock, msg, '🤖');
-        const answer = await askAI(text);
-        return reply(answer.slice(0, 4000));
+        try {
+          const answer = await askAI(text, cmd);
+          const label = MODEL_LABELS[cmd] || 'AI';
+          return reply(`*${label}*\n\n${answer.slice(0, 4000)}`);
+        } catch (e) { return reply('AI request failed: ' + e.message); }
+      }
+
+      case 'currency': {
+        const amount = first || '1';
+        const from = words[1] || 'USD';
+        const to = words[2] || 'KES';
+        if (!/^[0-9.,]+$/.test(amount)) return reply(`Usage: ${config.prefix}currency <amount> <FROM> <TO>\nExample: ${config.prefix}currency 100 USD KES`);
+        await react(sock, msg, '💱');
+        try {
+          const r = await extra.currency(Number(amount.replace(/,/g, '')), from, to);
+          return reply(`*💱 CURRENCY*\n\n${Number(amount).toLocaleString()} ${r.base} = *${r.result.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${r.target}*\n_Rate: 1 ${r.base} = ${r.rate} ${r.target}_`);
+        } catch (e) { return reply('Currency lookup failed: ' + e.message); }
+      }
+
+      case 'crypto': {
+        await react(sock, msg, '📈');
+        try { return reply(`*📈 CRYPTO PRICES*\n\n${await extra.crypto(rest || 'bitcoin,ethereum,solana,dogecoin')}`); }
+        catch (e) { return reply('Crypto lookup failed: ' + e.message); }
       }
 
       case 'imagine':
@@ -469,6 +843,86 @@ Wind: ${c.windspeedKmph} km/h ${c.winddir16Point}`
       // ---------- FUN ----------
       case 'quote': return reply(`*💬 Quote*\n\n_${random(QUOTES)}_`);
       case 'joke': return reply(`*😂 Joke*\n\n${random(JOKES)}`);
+
+      case 'meme': {
+        await react(sock, msg, '😂');
+        try {
+          const m = await extra.meme();
+          const { data } = await axios.get(m.url, { responseType: 'arraybuffer', timeout: 30000 });
+          return sock.sendMessage(jid, { image: Buffer.from(data), caption: `*${m.title}*\n🔗 ${m.link}` }, { quoted: msg });
+        } catch (e) { return reply('Meme failed: ' + e.message); }
+      }
+
+      case 'fact': {
+        try { return reply(`*🧠 FACT*\n\n${await extra.fact()}`); }
+        catch (e) { return reply('Fact failed: ' + e.message); }
+      }
+
+      case 'advice': {
+        try { return reply(`*💡 ADVICE*\n\n${await extra.advice()}`); }
+        catch (e) { return reply('Advice failed: ' + e.message); }
+      }
+
+      case 'truth': {
+        try { return reply(`*🙊 TRUTH*\n\n${await extra.truth()}`); }
+        catch (e) { return reply('Truth failed: ' + e.message); }
+      }
+
+      case 'dare': {
+        try { return reply(`*😈 DARE*\n\n${await extra.dare()}`); }
+        catch (e) { return reply('Dare failed: ' + e.message); }
+      }
+
+      case 'roast': {
+        try { return reply(`*🔥 ROAST*\n\n${await extra.roast()}`); }
+        catch (e) { return reply('Roast failed: ' + e.message); }
+      }
+
+      case 'pickup': {
+        return reply(`*😘 PICKUP LINE*\n\n${extra.pickup()}`);
+      }
+
+      case 'compliment': {
+        return reply(`*🥰 COMPLIMENT*\n\n${extra.compliment()}`);
+      }
+
+      case 'ship': {
+        try {
+          const r = extra.ship(first, words[1]);
+          const bar = '█'.repeat(Math.round(r.score / 10)) + '░'.repeat(10 - Math.round(r.score / 10));
+          return reply(`*💘 SHIP*\n\n@${r.a}  💞  @${r.b}\n\`${bar}\` *${r.score}%*\n\n_${r.score > 75 ? 'A perfect match!' : r.score > 45 ? 'There is something here...' : 'Keep looking!'}_`);
+        } catch (e) { return reply(e.message); }
+      }
+
+      case 'lovemeter':
+      case 'love': {
+        const r = extra.lovemeter(first, words[1]);
+        return reply(`*💖 LOVEMETER*\n\n${r.a}  ❤️  ${r.b}\n*${r.score}%* ${r.score > 80 ? '💞 SOULMATES' : r.score > 50 ? '💕 Promising' : '💔 Needs work'}`);
+      }
+
+      case 'aura': {
+        const [level, note] = extra.aura();
+        return reply(`*✨ AURA*\n\n${level}\n_${note}_`);
+      }
+
+      case 'roll':
+      case 'dice': {
+        const r = extra.roll(first);
+        return reply(`*🎲 ROLL*\n\nYou rolled a *${r.value}* (1–${r.sides})`);
+      }
+
+      case 'flip':
+      case 'coin': {
+        return reply(`*🪙 FLIP*\n\nIt landed on *${extra.flip()}*`);
+      }
+
+      case 'emojimix': {
+        return reply(`*🔀 EMOJIMIX*\n\n${extra.emojimix()}`);
+      }
+
+      case 'king': {
+        return reply(extra.king());
+      }
 
       // ---------- DOWNLOADS ----------
       case 'play':
@@ -654,7 +1108,48 @@ Wind: ${c.windspeedKmph} km/h ${c.winddir16Point}`
       case 'admins':
       case 'tagadmins':
       case 'tagadmin':
+      case 'listadmin':
+      case 'listadmins':
         return tagAdmins();
+
+      case 'setwelcome': {
+        if (!await needAdmin()) return;
+        return setGuard('welcome', first || 'on', 'group');
+      }
+
+      case 'setgoodbye': {
+        if (!await needAdmin()) return;
+        return setGuard('goodbye', first || 'on', 'group');
+      }
+
+      case 'poll': {
+        if (!await needAdmin()) return;
+        const options = String(rest || '').split(/[,|]/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+        if (!first || options.length < 2) {
+          return reply(`Usage: ${config.prefix}poll <question> <option1> | <option2> | <option3>`);
+        }
+        try {
+          await sock.sendMessage(jid, {
+            poll: { name: first, values: options, selectableCount: 1 },
+          }, { quoted: msg });
+          return reply('📊 Poll created.');
+        } catch (e) { return reply('Could not create poll: ' + e.message); }
+      }
+
+      case 'announce': {
+        if (!await needAdmin()) return;
+        if (!text) return reply(`Usage: ${config.prefix}announce <message>`);
+        const m = await meta();
+        const mentions = uniqueJids(m.participants.map((p) => p.id));
+        return reply(`*📢 ANNOUNCEMENT*\n\n${text}`, { mentions });
+      }
+
+      case 'warn': {
+        if (!await needAdmin()) return;
+        const target = targetOf(quoted);
+        if (!target) return reply(`Reply to a member's message with ${config.prefix}warn`);
+        return reply(`⚠️ @${normalizeNumber(target)} — official warning from the group admins.\n${text ? `\n_${text}_` : ''}`, { mentions: [target] });
+      }
 
       case 'chatmute':
       case 'mutegroup':
@@ -818,6 +1313,29 @@ ${members}`,
         if (sub === 'status') return setGuard('antistatus', value, 'global');
         if (sub === 'statusmention') return setGuard('antistatusMention', value, 'global');
         return reply(`Usage: ${config.prefix}anti link|call|spam|status on/off`);
+      }
+
+      // ---------- AUDIO EDIT TOOLS ----------
+      case 'tomp3':
+      case 'to8daudio':
+      case 'tobass':
+      case 'toslowed': {
+        const q = quoted || msg;
+        const m = q.message || {};
+        const media = m.audioMessage || m.videoMessage || m.documentMessage;
+        if (!media) return reply(`Reply to an *audio / voice note* with ${config.prefix}${cmd}`);
+        await react(sock, msg, '🎧');
+        try {
+          const stream = await sock.downloadMediaMessage(q);
+          const chunks = [];
+          for await (const chunk of stream) chunks.push(chunk);
+          const input = { buffer: Buffer.concat(chunks), mime: media.mimetype || 'audio/mpeg', name: media.fileName || '' };
+          const out = cmd === 'tomp3' ? await audio.toMp3(input)
+            : cmd === 'to8daudio' ? await audio.to8d(input)
+            : cmd === 'tobass' ? await audio.toBass(input)
+            : await audio.toSlowed(input);
+          return sock.sendMessage(jid, { audio: out.buffer, mimetype: 'audio/mpeg', fileName: out.name, ptt: false, caption: `*${cmd.toUpperCase()}* ✅` }, { quoted: msg });
+        } catch (e) { return reply(`${cmd.toUpperCase()} failed: ` + e.message); }
       }
 
       // ---------- OWNER ----------

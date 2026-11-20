@@ -45,6 +45,19 @@ npm install
 npm start
 ```
 
+Optional helpers for the advanced commands:
+
+```bash
+# PDF lock/unlock + PDF text extraction + password-protected ZIP
+python -m pip install pikepdf pypdf pyzipper
+
+# Audio edit tools (.tomp3, .to8daudio, .tobass, .toslowed)
+# Install ffmpeg from https://ffmpeg.org or your package manager
+```
+
+All other commands (PDF merge, PDF↔image, TXT↔file, ZIP read, web tools,
+AI, LAB images, fun commands) work with just `npm install`.
+
 Run 24/7 with PM2:
 
 ```bash
@@ -90,8 +103,57 @@ Downloads are capped at **4 GB** (`downloadMaxMB: 4096`). Files over 64 MB strea
 | `.owner`, `.info` | Owner / bot info |
 | `.sticker`, `.toimg`, `.attp` | Sticker tools |
 | `.calc`, `.translate`, `.weather` | Utilities |
-| `.ai`, `.imagine` | AI chat / AI image |
-| `.quote`, `.joke` | Fun |
+
+### Student LAB
+| Command | What it does |
+|---|---|
+| `.pdfunlock [password]` *(reply to PDF)* | Remove PDF protection |
+| `.pdflock [password]` *(reply to PDF)* | Password-protect a PDF |
+| `.pdfmerge` *(reply to PDFs, then `.pdfmergedone`)* | Merge multiple PDFs |
+| `.pdf2img [jpg]` *(reply to PDF)* | Convert PDF pages to images |
+| `.img2pdf` *(reply to images, then `.img2pdfdone`)* | Combine images into a PDF |
+| `.ziplock <password>` *(reply to a file)* | Create a password-protected ZIP |
+| `.zipunlock <password>` *(reply to ZIP)* | Extract a protected ZIP |
+| `.txttofile <name> <text>` | Turn text into a file |
+| `.filetotxt` *(reply to TXT/PDF/ZIP)* | Extract text from a file |
+| `.compress` *(reply to a file)* | Compress image/PDF/video/audio |
+| `.dictionary <word>`, `.wiki <topic>` | Definitions / Wikipedia summaries |
+
+### Tools
+| Command | What it does |
+|---|---|
+| `.ip` | Public IP + location details |
+| `.whois <domain>` | RDAP domain registration lookup |
+| `.extractweb <url>` | Read a web page as plain text |
+| `.base64 <text>`, `.decode64 <text>` | Encode / decode Base64 |
+| `.uuid` | Generate a UUID v4 |
+| `.shortlink <url>` | Shorten a link (TinyURL) |
+| `.hash [algo] <text>` | MD5 / SHA hashes |
+
+### LAB (images)
+| Command | What it does |
+|---|---|
+| `.wallpaper` | Random wallpaper |
+| `.cat`, `.dog` | Random cat / dog photo |
+| `.girldp`, `.animedp`, `.randomdp`, `.coupledp` | Random display pictures |
+
+### AI
+| Command | What it does |
+|---|---|
+| `.ai`, `.ask`, `.gpt`, `.gpt1`–`.gpt4`, `.gemini` | AI chat (free tier aliases) |
+| `.imagine <prompt>` | AI-generated image |
+| `.currency <amount> <FROM> <TO>` | Exchange rates |
+| `.crypto [coin]` | Live crypto prices |
+
+### Fun
+| Command | What it does |
+|---|---|
+| `.meme`, `.fact`, `.advice`, `.roast` | Random content |
+| `.truth`, `.dare`, `.pickup`, `.compliment` | Party / fun text |
+| `.ship <name1> <name2>`, `.lovemeter [a] [b]` | Match meters |
+| `.aura`, `.king`, `.emojimix` | Random status |
+| `.roll [sides]`, `.flip` | Dice / coin |
+| `.quote`, `.joke` | Quotes and jokes |
 
 ### Group controller (admin only)
 | Command | What it does |
@@ -110,6 +172,20 @@ Downloads are capped at **4 GB** (`downloadMaxMB: 4096`). Files over 64 MB strea
 | `.gstatus <text>` | Post to your status mentioning group members |
 | `.groupinfo`, `.revoke` | Group details / reset invite link |
 | `.welcome on/off`, `.goodbye on/off` | Join / leave messages |
+| `.listadmin` | List group admins |
+| `.setwelcome on/off`, `.setgoodbye on/off` | Set join / leave messages |
+| `.setdesc <text>` | Change the group description |
+| `.poll <question> <a> \| <b>` | Create a poll |
+| `.announce <text>` | Mention everyone with an announcement |
+| `.warn <reason>` *(reply to a member)* | Issue an official warning |
+
+### Audio edit tools
+| Command | What it does |
+|---|---|
+| `.tomp3` *(reply to audio)* | Convert audio to MP3 |
+| `.to8daudio` *(reply to audio)* | 8D stereo panning effect |
+| `.tobass` *(reply to audio)* | Bass boost |
+| `.toslowed` *(reply to audio)* | Slowed-down version |
 
 Compound aliases also work: `.g link`, `.g about`, `.chat mute 4`, `.admin tag`, `.anti link warn`.
 
@@ -155,7 +231,12 @@ TEKSI-MD/
 ├── lib/
 │   ├── utils.js
 │   ├── sticker.js
-│   ├── ai.js
+│   ├── ai.js           # Pollinations AI aliases
+│   ├── extra.js        # Web tools + fun commands
+│   ├── docs.js         # PDF / ZIP / file tools
+│   ├── images.js       # Wallpaper / DP image APIs
+│   ├── audio.js        # ffmpeg audio edits
+│   ├── profile.js      # Bot display picture
 │   ├── settings.js     # Persistent group settings
 │   └── downloader.js   # YouTube / social / direct download helpers
 ├── plugins/
