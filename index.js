@@ -159,7 +159,10 @@ async function startBot() {
       if (shouldReconnect) {
         setTimeout(startBot, 3000);
       } else {
-        console.log('[TEKSI-MD] Logged out. Delete the "session" folder and restart to pair again.');
+        const sessionPath = require('path').resolve(config.sessionFolder);
+        console.log(`[TEKSI-MD] Logged out (401). This session is no longer valid.`);
+        console.log(`[TEKSI-MD] Fix: rm -rf "${sessionPath}"  then run: npm start`);
+        console.log('[TEKSI-MD] There is no "session ID" folder — it is the session/ directory in the project.');
       }
     }
   });
