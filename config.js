@@ -29,6 +29,14 @@ module.exports = {
   // If you want the bot on a DIFFERENT number, put that number here.
   pairingNumber: '254715442684',
 
+  // How long each QR code stays valid while pairing (milliseconds).
+  // Default: 120000 (120s). Override remotely with TEKSI_QR_TIMEOUT_MS
+  // or PAIR_TIMEOUT_MS, e.g. PAIR_TIMEOUT_MS=180000
+  qrTimeoutMs: (() => {
+    const value = Number(process.env.TEKSI_QR_TIMEOUT_MS || process.env.PAIR_TIMEOUT_MS);
+    return Number.isFinite(value) && value > 0 ? value : 120000;
+  })(),
+
   // ---------- Downloads ----------
   // Max file size the bot will try to send (in MB).
   downloadMaxMB: 4096, // 4 GB — large files stream to disk instead of memory

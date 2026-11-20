@@ -80,6 +80,7 @@ async function startBot() {
     browser: Browsers.windows(config.botName),
     markOnlineOnConnect: true,
     syncFullHistory: false,
+    qrTimeout: config.qrTimeoutMs,
   });
 
   sock.ev.on('creds.update', saveCreds);
